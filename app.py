@@ -8,7 +8,7 @@ from typing import Optional, List
 from pydantic import Field
 
 # --- CONFIGURE GEMINI ---
-genai.configure(api_key="AIzaSyBmUYQdImYbjPJesYFoMHVEfibp5l1CKBc")  # Replace with your Google AI Studio key
+genai.configure(api_key="AIzaSyBmUYQdImYbjPJesYFoMHVEfibp5l1CKBc")  # Replace with your actual API key
 
 # Custom LangChain-compatible wrapper for Gemini 1.5 Flash
 class GeminiLLM(LLM):
@@ -30,19 +30,21 @@ class GeminiLLM(LLM):
 st.set_page_config(page_title="AI-Powered Industrial Safety Monitoring", layout="wide")
 st.title("🛡️ AI-Powered Industrial Safety Monitoring System")
 
-# Load FAISS DB
-embeddings = HuggingFaceEmbeddings()
-
+# Load FAISS DB with fixed HuggingFaceEmbeddings configuration
 @st.cache_resource
 def load_vector_db():
     try:
+        embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_kwargs={"device": "cpu"}  # Use "cuda" if you have GPU
+        )
         return FAISS.load_local(
             "incident_faiss_index",
             embeddings,
             allow_dangerous_deserialization=True
         )
     except Exception as e:
-        st.error("❌ Failed to load FAISS index. Ensure it is trusted and exists.")
+        st.error(f"❌ Failed to load FAISS index: {e}")
         st.stop()
 
 db = load_vector_db()
