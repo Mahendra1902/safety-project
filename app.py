@@ -30,13 +30,13 @@ class GeminiLLM(LLM):
 st.set_page_config(page_title="AI-Powered Industrial Safety Monitoring", layout="wide")
 st.title("🛡️ AI-Powered Industrial Safety Monitoring System")
 
-# Load FAISS DB with fixed HuggingFaceEmbeddings configuration
+# Load FAISS DB with error handling
 @st.cache_resource
 def load_vector_db():
     try:
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={"device": "cpu"}  # Use "cuda" if you have GPU
+            model_kwargs={"device": "cpu"}  # Use "cuda" if using GPU
         )
         return FAISS.load_local(
             "incident_faiss_index",
@@ -47,11 +47,11 @@ def load_vector_db():
         st.error(f"❌ Failed to load FAISS index: {e}")
         st.stop()
 
+# Initialize DB, Retriever, LLM, Chain
 db = load_vector_db()
 retriever = db.as_retriever()
 llm = GeminiLLM()
 
-# Create RetrievalQA chain
 qa_chain = RetrievalQA.from_chain_type(
     llm=llm, retriever=retriever, return_source_documents=True
 )
@@ -63,7 +63,19 @@ agent_option = st.sidebar.selectbox(
     ["Incident Analysis Agent", "Prevention Agent", "Compliance Agent"]
 )
 
-# Main Interface
+# Function to safely call QA chain
+def run_query(query_text):
+    try:
+        result = qa_chain(query_text)
+        if not result or 'result' not in result:
+            st.warning("No response returned. Try rephrasing your query.")
+            return None
+        return result
+    except Exception as e:
+        st.error(f"⚠️ Error during query: {e}")
+        return None
+
+# --- Main Interface ---
 if agent_option == "Incident Analysis Agent":
     st.header("📄 Incident Analysis Agent")
     query = st.text_input(
@@ -72,30 +84,33 @@ if agent_option == "Incident Analysis Agent":
     )
     if st.button("Analyze"):
         with st.spinner("Retrieving historical incidents..."):
-            result = qa_chain(query)
-            st.subheader("🔍 Relevant Incident Insights")
-            st.write(result['result'])
-            with st.expander("📂 Source Documents"):
-                for doc in result['source_documents']:
-                    st.markdown(f"**{doc.metadata.get('source', 'Unknown Source')}**")
-                    st.code(doc.page_content[:500])
+            result = run_query(query)
+            if result:
+                st.subheader("🔍 Relevant Incident Insights")
+                st.markdown(result['result'])
+                with st.expander("📂 Source Documents"):
+                    for doc in result.get('source_documents', []):
+                        st.markdown(f"**{doc.metadata.get('source', 'Unknown Source')}**")
+                        st.code(doc.page_content[:500])
 
 elif agent_option == "Prevention Agent":
     st.header("✅ Pre-Shift Prevention Checklist")
     checklist_query = "What safety checks should be performed before operating machinery in high-noise zones?"
     with st.spinner("Generating pre-emptive action checklist..."):
-        result = qa_chain(checklist_query)
-        st.write("### 🔧 Recommended Pre-Shift Checklist:")
-        st.markdown(result['result'])
+        result = run_query(checklist_query)
+        if result:
+            st.write("### 🔧 Recommended Pre-Shift Checklist:")
+            st.markdown(result['result'])
 
 elif agent_option == "Compliance Agent":
     st.header("📊 Safety Compliance Report Generator")
     compare_query = "Compare current safety incident patterns with last year's trends and OSHA guidelines"
     with st.spinner("Generating compliance report..."):
-        result = qa_chain(compare_query)
-        st.write("### 📈 Safety Compliance Report:")
-        st.markdown(result['result'])
+        result = run_query(compare_query)
+        if result:
+            st.write("### 📈 Safety Compliance Report:")
+            st.markdown(result['result'])
 
-# Footer
+# --- Footer ---
 st.markdown("---")
 st.markdown("🚧 _Powered by FAISS + LangChain + Gemini 1.5 Flash (AI Studio)_")
